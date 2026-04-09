@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sol-echo"
+version = "0.1.0"
+description = "Echo adapter for Sol — end-to-end validation of the plugin pipeline"
+requires-python = ">= 3.12"
+license = "MIT"
+dependencies = [
+    "sol",
+]
+
+[project.entry-points.'sol.adapters']
+echo = "sol_echo.adapter:EchoAdapter"
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]

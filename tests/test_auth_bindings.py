@@ -1,0 +1,159 @@
+"""Tests for AuthBindings host-pattern matching."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from sol.auth.binding import AuthBinding, AuthBindings
+from sol.auth.profile import AuthType, LiteralSecret, Profile, Profiles
+from sol.errors import AuthError
+
+
+@pytest.fixture
+def profiles_store(tmp_path):
+    """Create a Profiles store with test profiles."""
+    store = Profiles(path=tmp_path / "creds.json")
+    store.set_profile(
+        Profile(
+            name="github",
+            auth_type=AuthType.bearer,
+            secret_source=LiteralSecret(value="ghp_token"),
+        )
+    )
+    store.set_profile(
+        Profile(
+            name="default",
+            auth_type=AuthType.api_key,
+            secret_source=LiteralSecret(value="default-key"),
+        )
+    )
+    return store
+
+
+class TestAuthBinding:
+    """Test AuthBinding model."""
+
+    def test_default_priority(self):
+        b = AuthBinding(host="*.example.com", credential="test")
+        assert b.priority == 0
+
+    def test_custom_priority(self):
+        b = AuthBinding(host="api.github.com", credential="gh", priority=10)
+        assert b.priority == 10
+
+
+class TestAuthBindingsMatch:
+    """Test URL matching logic."""
+
+    def test_exact_host_match(self, profiles_store):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="api.github.com", credential="github"),
+        ]
+        profile = bindings.match(
+            "https://api.github.com/repos", profiles=profiles_store
+        )
+        assert profile is not None
+        assert profile.name == "github"
+
+    def test_wildcard_match(self, profiles_store):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="*.github.com", credential="github"),
+        ]
+        profile = bindings.match(
+            "https://api.github.com/repos", profiles=profiles_store
+        )
+        assert profile is not None
+        assert profile.name == "github"
+
+    def test_no_match_returns_none(self, profiles_store):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="*.github.com", credential="github"),
+        ]
+        profile = bindings.match(
+            "https://api.example.com/data", profiles=profiles_store
+        )
+        assert profile is None
+
+    def test_priority_ordering(self, profiles_store):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="*.github.com", credential="default", priority=0),
+            AuthBinding(host="*.github.com", credential="github", priority=10),
+        ]
+        profile = bindings.match(
+            "https://api.github.com/repos", profiles=profiles_store
+        )
+        assert profile is not None
+        assert profile.name == "github"
+
+    def test_empty_url_returns_none(self, profiles_store):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="*", credential="default"),
+        ]
+        profile = bindings.match("", profiles=profiles_store)
+        assert profile is None
+
+    def test_missing_profile_returns_none(self, profiles_store):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="*.example.com", credential="nonexistent"),
+        ]
+        profile = bindings.match("https://api.example.com", profiles=profiles_store)
+        assert profile is None
+
+
+class TestAuthBindingsCRUD:
+    """Test binding add/remove/list operations."""
+
+    def test_add_and_list(self):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = []
+        b = AuthBinding(host="*.test.com", credential="test_cred")
+        bindings.add_binding(b)
+        listed = bindings.list_bindings()
+        assert len(listed) == 1
+        assert listed[0].host == "*.test.com"
+
+    def test_remove_binding(self):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="a.com", credential="cred_a"),
+            AuthBinding(host="b.com", credential="cred_b"),
+        ]
+        assert bindings.remove_binding("a.com", "cred_a") is True
+        assert len(bindings.list_bindings()) == 1
+
+    def test_remove_nonexistent(self):
+        bindings = AuthBindings(path=None)
+        bindings._bindings = []
+        assert bindings.remove_binding("nope.com", "nope") is False
+
+
+class TestAuthBindingsPersistence:
+    """Test save/load."""
+
+    def test_save_and_load_roundtrip(self, tmp_path):
+        path = tmp_path / "bindings.json"
+        b = AuthBindings(path=path)
+        b._bindings = [
+            AuthBinding(host="*.api.com", credential="my_cred", priority=5),
+        ]
+        b.save()
+
+        b2 = AuthBindings(path=path)
+        b2.load()
+        items = b2.list_bindings()
+        assert len(items) == 1
+        assert items[0].host == "*.api.com"
+        assert items[0].priority == 5
+
+    def test_load_nonexistent_file(self, tmp_path):
+        b = AuthBindings(path=tmp_path / "missing.json")
+        b.load()  # should not raise
+        assert b.list_bindings() == []

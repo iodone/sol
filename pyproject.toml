@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sol"
+version = "0.1.0"
+description = "Universal API CLI — discover, inspect, and invoke any protocol through a single interface"
+readme = "README.md"
+requires-python = ">= 3.12"
+license = "MIT"
+dependencies = [
+    "typer>=0.9",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "httpx>=0.27",
+    "pluggy>=1.3",
+    "aiosqlite>=0.19",
+    "rich>=13.0",
+    "loguru>=0.7.2",
+]
+
+[project.scripts]
+sol = "sol.__main__:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pytest-asyncio>=0.23",
+    "black>=24.0",
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/sol", "src/skills"]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

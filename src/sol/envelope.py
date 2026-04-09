@@ -18,6 +18,7 @@ class ErrorInfo(BaseModel):
 class Metadata(BaseModel):
     """Response metadata attached to every envelope."""
 
+    version: str = "v1"
     cached: bool = False
     duration_ms: float | None = None
     adapter: str | None = None

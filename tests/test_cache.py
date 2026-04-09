@@ -29,7 +29,7 @@ class TestSchemaCachePutGet:
         entry = await cache.get("key1")
         assert entry is not None
         assert entry.key == "key1"
-        assert entry.schema == {"ops": [1, 2]}
+        assert entry.schema_data == {"ops": [1, 2]}
         assert entry.protocol == "openapi"
         assert entry.stale is False
 
@@ -42,7 +42,7 @@ class TestSchemaCachePutGet:
         await cache.put("k", {"v": 2}, "proto", ttl=3600)
         entry = await cache.get("k")
         assert entry is not None
-        assert entry.schema == {"v": 2}
+        assert entry.schema_data == {"v": 2}
 
 
 @pytest.mark.asyncio

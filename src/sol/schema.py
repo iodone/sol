@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Parameter(BaseModel):
@@ -30,3 +30,4 @@ class OperationDetail(Operation):
 
     return_type: str | None = None
     input_schema: dict[str, Any] | None = None
+    invocation_examples: list[str] = Field(default_factory=list)

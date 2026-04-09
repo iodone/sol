@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 
 import aiosqlite
 from pydantic import BaseModel, ConfigDict
@@ -15,7 +16,7 @@ class CacheEntry(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     key: str
-    schema: dict
+    schema_data: Any
     protocol: str
     fetched_at: float
     expires_at: float
@@ -101,14 +102,14 @@ class SchemaCache:
 
         return CacheEntry(
             key=row[0],
-            schema=json.loads(row[1]),
+            schema_data=json.loads(row[1]),
             protocol=row[2],
             fetched_at=row[3],
             expires_at=row[4],
             stale=expired,
         )
 
-    async def put(self, key: str, schema: dict, protocol: str, ttl: int) -> None:
+    async def put(self, key: str, schema: Any, protocol: str, ttl: int) -> None:
         """Store or update a schema in the cache with a TTL in seconds."""
         db = self._ensure_db()
         now = time.time()
@@ -139,7 +140,7 @@ class SchemaCache:
                 entries.append(
                     CacheEntry(
                         key=row[0],
-                        schema=json.loads(row[1]),
+                        schema_data=json.loads(row[1]),
                         protocol=row[2],
                         fetched_at=row[3],
                         expires_at=row[4],

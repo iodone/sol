@@ -69,11 +69,25 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(cache_app, name="cache")
 
 
-def parse_key_value(raw: str) -> tuple[str, str]:
-    """Parse a single key=value argument.
+def parse_key_value(raw: str) -> tuple[str, Any]:
+    """Parse a single key=value or key:=json argument.
 
     Returns (key, value) where key may be dotted (e.g. 'user.name').
+    - key=value  → value stays as string
+    - key:=json  → value parsed as JSON (int, bool, list, dict, etc.)
     """
+    # Check for := (JSON typed) before = (string)
+    if ":=" in raw:
+        key, _, json_str = raw.partition(":=")
+        if not key:
+            raise typer.BadParameter(f"Empty key in argument: {raw!r}")
+        try:
+            value = json.loads(json_str)
+        except json.JSONDecodeError as exc:
+            raise typer.BadParameter(
+                f"Invalid JSON after ':=' in {raw!r}: {exc}"
+            ) from exc
+        return key, value
     if "=" not in raw:
         raise typer.BadParameter(f"Argument must be key=value, got: {raw!r}")
     key, _, value = raw.partition("=")
@@ -82,7 +96,7 @@ def parse_key_value(raw: str) -> tuple[str, str]:
     return key, value
 
 
-def set_nested(d: dict[str, Any], dotted_key: str, value: str) -> None:
+def set_nested(d: dict[str, Any], dotted_key: str, value: Any) -> None:
     """Set a value in a nested dict using dotted key notation.
 
     Example: set_nested({}, 'user.name', 'foo') → {'user': {'name': 'foo'}}
@@ -221,6 +235,7 @@ def main(
             no_cache=no_cache,
             credential=credential,
             use_spinner=use_spinner,
+            api_help=api_help,
         )
     )
     emit(envelope, fmt=format)
@@ -237,6 +252,7 @@ async def _run(
     no_cache: bool = False,
     credential: str | None = None,
     use_spinner: bool = False,
+    api_help: bool = False,
 ) -> OutputEnvelope:
     """Execute the discover → inspect → invoke pipeline."""
     from sol import SolFramework
@@ -265,6 +281,7 @@ async def _run(
             settings=settings,
             credential=credential,
             use_spinner=use_spinner,
+            api_help=api_help,
         )
     finally:
         if cache is not None:
@@ -281,6 +298,7 @@ async def _run_pipeline(
     settings: Any = None,
     credential: str | None = None,
     use_spinner: bool = False,
+    api_help: bool = False,
 ) -> OutputEnvelope:
     """Inner pipeline with cache integration and auth injection."""
     from contextlib import contextmanager
@@ -343,21 +361,28 @@ async def _run_pipeline(
                 meta = Metadata(
                     cached=True,
                     cache_source=entry.cache_source,
-                    cache_age_ms=round(entry.cache_age_ms, 1),
+                    cache_age_ms=int(entry.cache_age_ms),
                     cache_stale=entry.stale,
                 )
                 return OutputEnvelope.success(
                     kind="discovery",
                     protocol=protocol,
                     endpoint=url,
-                    data=entry.schema,
+                    data=entry.schema_data,
                     meta=meta,
                 )
 
         try:
             with spinner("Fetching operations…"):
                 ops = await adapter.list_operations(url)
-            data = [op.model_dump() for op in ops]
+            op_dicts = [op.model_dump() for op in ops]
+            data = {
+                "operations": op_dicts,
+                "count": len(op_dicts),
+                "examples": (
+                    [f"sol {url} {ops[0].operation_id} key=value"] if ops else []
+                ),
+            }
 
             # Store in cache
             if cache is not None:
@@ -378,8 +403,8 @@ async def _run_pipeline(
                 details=exc.details,
             )
 
-    # Inspect mode: operation given but no args
-    if not args:
+    # Inspect mode: operation given with -h flag
+    if api_help and not args:
         cache_key = f"inspect:{url}:{operation}"
 
         # Check cache
@@ -389,7 +414,7 @@ async def _run_pipeline(
                 meta = Metadata(
                     cached=True,
                     cache_source=entry.cache_source,
-                    cache_age_ms=round(entry.cache_age_ms, 1),
+                    cache_age_ms=int(entry.cache_age_ms),
                     cache_stale=entry.stale,
                 )
                 return OutputEnvelope.success(
@@ -397,13 +422,26 @@ async def _run_pipeline(
                     protocol=protocol,
                     endpoint=url,
                     operation=operation,
-                    data=entry.schema,
+                    data=entry.schema_data,
                     meta=meta,
                 )
 
         try:
             with spinner("Fetching operation details…"):
                 detail = await adapter.describe_operation(url, operation)
+            if not detail.invocation_examples:
+                if detail.parameters:
+                    example_args = (
+                        " ".join(
+                            f"{p.name}=value" for p in detail.parameters if p.required
+                        )
+                        or "key=value"
+                    )
+                    detail.invocation_examples = [
+                        f"sol {url} {operation} {example_args}"
+                    ]
+                else:
+                    detail.invocation_examples = [f"sol {url} {operation} key=value"]
             data = detail.model_dump()
 
             # Store in cache

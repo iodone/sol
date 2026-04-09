@@ -7,7 +7,6 @@ from typing import Any
 from sol.adapter import Adapter, ExecutionResult
 from sol.schema import Operation, OperationDetail, Parameter
 
-
 # Hardcoded operations this adapter exposes
 _ECHO_OPERATIONS = [
     Operation(
@@ -15,7 +14,12 @@ _ECHO_OPERATIONS = [
         display_name="Greet",
         description="Echo back a greeting with the provided name",
         parameters=[
-            Parameter(name="name", param_type="string", required=True, description="Name to greet"),
+            Parameter(
+                name="name",
+                param_type="string",
+                required=True,
+                description="Name to greet",
+            ),
         ],
     ),
     Operation(
@@ -23,7 +27,12 @@ _ECHO_OPERATIONS = [
         display_name="Echo",
         description="Echo back all provided arguments",
         parameters=[
-            Parameter(name="message", param_type="string", required=False, description="Message to echo"),
+            Parameter(
+                name="message",
+                param_type="string",
+                required=False,
+                description="Message to echo",
+            ),
         ],
     ),
     Operation(
@@ -40,17 +49,31 @@ _ECHO_DETAILS: dict[str, OperationDetail] = {
         display_name="Greet",
         description="Echo back a greeting with the provided name",
         parameters=[
-            Parameter(name="name", param_type="string", required=True, description="Name to greet"),
+            Parameter(
+                name="name",
+                param_type="string",
+                required=True,
+                description="Name to greet",
+            ),
         ],
         return_type="object",
-        input_schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        input_schema={
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
     ),
     "echo": OperationDetail(
         operation_id="echo",
         display_name="Echo",
         description="Echo back all provided arguments",
         parameters=[
-            Parameter(name="message", param_type="string", required=False, description="Message to echo"),
+            Parameter(
+                name="message",
+                param_type="string",
+                required=False,
+                description="Message to echo",
+            ),
         ],
         return_type="object",
         input_schema={"type": "object", "properties": {"message": {"type": "string"}}},

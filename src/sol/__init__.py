@@ -63,6 +63,8 @@ class SolFramework:
 # Convenience alias
 Sol = SolFramework
 
+from sol.standalone import standalone_cli
+
 __all__ = [
     "Adapter",
     "AdapterRegistry",
@@ -73,4 +75,5 @@ __all__ = [
     "Sol",
     "SolFramework",
     "hookimpl",
+    "standalone_cli",
 ]

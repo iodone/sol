@@ -300,14 +300,14 @@ async def _run_pipeline(
     use_spinner: bool = False,
     api_help: bool = False,
 ) -> OutputEnvelope:
-    """Inner pipeline with cache integration and auth injection."""
+    """Inner pipeline with protocol detection, auth, then core pipeline."""
     from contextlib import contextmanager
 
     from rich.status import Status
 
     from sol.auth import resolve_auth_headers
-    from sol.envelope import Metadata
     from sol.formatter import _is_tty, get_console
+    from sol.pipeline import run_pipeline
 
     @contextmanager
     def spinner(message: str):
@@ -347,140 +347,16 @@ async def _run_pipeline(
             details=exc.details,
         )
 
-    protocol = await adapter.protocol_name()
     ttl = settings.cache_ttl if settings else 3600
 
-    # Discover mode: no operation specified
-    if operation is None:
-        cache_key = f"discovery:{url}"
-
-        # Check cache
-        if cache is not None:
-            entry = await cache.get(cache_key, stale_ok=True)
-            if entry is not None:
-                meta = Metadata(
-                    cached=True,
-                    cache_source=entry.cache_source,
-                    cache_age_ms=int(entry.cache_age_ms),
-                    cache_stale=entry.stale,
-                )
-                return OutputEnvelope.success(
-                    kind="discovery",
-                    protocol=protocol,
-                    endpoint=url,
-                    data=entry.schema_data,
-                    meta=meta,
-                )
-
-        try:
-            with spinner("Fetching operations…"):
-                ops = await adapter.list_operations(url)
-            op_dicts = [op.model_dump() for op in ops]
-            data = {
-                "operations": op_dicts,
-                "count": len(op_dicts),
-                "examples": (
-                    [f"sol {url} {ops[0].operation_id} key=value"] if ops else []
-                ),
-            }
-
-            # Store in cache
-            if cache is not None:
-                await cache.put(cache_key, data, protocol, ttl)
-
-            return OutputEnvelope.success(
-                kind="discovery",
-                protocol=protocol,
-                endpoint=url,
-                data=data,
-            )
-        except SolError as exc:
-            return OutputEnvelope.error(
-                code="DISCOVERY_FAILED",
-                message=exc.message,
-                endpoint=url,
-                protocol=protocol,
-                details=exc.details,
-            )
-
-    # Inspect mode: operation given with -h flag
-    if api_help and not args:
-        cache_key = f"inspect:{url}:{operation}"
-
-        # Check cache
-        if cache is not None:
-            entry = await cache.get(cache_key, stale_ok=True)
-            if entry is not None:
-                meta = Metadata(
-                    cached=True,
-                    cache_source=entry.cache_source,
-                    cache_age_ms=int(entry.cache_age_ms),
-                    cache_stale=entry.stale,
-                )
-                return OutputEnvelope.success(
-                    kind="inspect",
-                    protocol=protocol,
-                    endpoint=url,
-                    operation=operation,
-                    data=entry.schema_data,
-                    meta=meta,
-                )
-
-        try:
-            with spinner("Fetching operation details…"):
-                detail = await adapter.describe_operation(url, operation)
-            if not detail.invocation_examples:
-                if detail.parameters:
-                    example_args = (
-                        " ".join(
-                            f"{p.name}=value" for p in detail.parameters if p.required
-                        )
-                        or "key=value"
-                    )
-                    detail.invocation_examples = [
-                        f"sol {url} {operation} {example_args}"
-                    ]
-                else:
-                    detail.invocation_examples = [f"sol {url} {operation} key=value"]
-            data = detail.model_dump()
-
-            # Store in cache
-            if cache is not None:
-                await cache.put(cache_key, data, protocol, ttl)
-
-            return OutputEnvelope.success(
-                kind="inspect",
-                protocol=protocol,
-                endpoint=url,
-                operation=operation,
-                data=data,
-            )
-        except SolError as exc:
-            return OutputEnvelope.error(
-                code="INSPECT_FAILED",
-                message=exc.message,
-                endpoint=url,
-                operation=operation,
-                protocol=protocol,
-                details=exc.details,
-            )
-
-    # Invoke mode: operation + args (never cached)
-    try:
-        result = await adapter.execute(url, operation, args, auth_headers=auth_headers)
-        return OutputEnvelope.success(
-            kind="invocation",
-            protocol=protocol,
-            endpoint=url,
-            operation=operation,
-            data=result.data,
-        )
-    except SolError as exc:
-        return OutputEnvelope.error(
-            code="EXECUTION_FAILED",
-            message=exc.message,
-            endpoint=url,
-            operation=operation,
-            protocol=protocol,
-            details=exc.details,
-        )
+    return await run_pipeline(
+        adapter,
+        url,
+        operation,
+        args,
+        api_help=api_help,
+        cache=cache,
+        ttl=ttl,
+        auth_headers=auth_headers,
+        cli_name="sol",
+    )

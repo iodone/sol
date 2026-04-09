@@ -63,7 +63,9 @@ class TestExecute:
 
     @pytest.mark.asyncio
     async def test_echo_arbitrary_args(self, adapter: EchoAdapter) -> None:
-        result = await adapter.execute("echo://test", "echo", {"message": "hi", "extra": "data"})
+        result = await adapter.execute(
+            "echo://test", "echo", {"message": "hi", "extra": "data"}
+        )
         assert result.data["echoed_operation"] == "echo"
         assert result.data["echoed_args"]["message"] == "hi"
 

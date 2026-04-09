@@ -15,6 +15,9 @@ dependencies = [
 [project.entry-points.'sol.adapters']
 echo = "sol_echo.adapter:EchoAdapter"
 
+[project.scripts]
+echo = "sol_echo.__main__:app"
+
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
 

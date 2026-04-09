@@ -27,7 +27,12 @@ def get_console(*, stderr: bool = False) -> Console:
 def render_discovery_table(envelope: OutputEnvelope) -> None:
     """Render operation list as a Rich table (discovery mode with -h)."""
     console = get_console()
-    ops = envelope.data or []
+    raw = envelope.data or []
+    # Support both wrapped {operations: [...]} and bare list formats
+    if isinstance(raw, dict):
+        ops = raw.get("operations", [])
+    else:
+        ops = raw
 
     table = Table(
         title=f"Operations — {envelope.endpoint or 'unknown'}",

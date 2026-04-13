@@ -122,14 +122,13 @@ Create `src/sol_openapi/adapter.py`. Your adapter must subclass `sol.adapter.Ada
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from loguru import logger
 
 from sol.adapter import Adapter, ExecutionResult
 from sol.client import AsyncHTTPClient
 from sol.schema import Operation, OperationDetail, Parameter
-
-logger = logging.getLogger(__name__)
 
 
 class OpenAPIAdapter(Adapter):
@@ -166,7 +165,7 @@ class OpenAPIAdapter(Adapter):
                     return False
                 return "openapi" in resp.json_body or "swagger" in resp.json_body
         except Exception:
-            logger.debug("OpenAPI detection failed for %s", url, exc_info=True)
+            logger.debug("OpenAPI detection failed for {}", url, exc_info=True)
             return False
 
     # ──────────────────────────────────────────────
@@ -490,12 +489,10 @@ Your adapter package can also implement lifecycle hooks. Add a hook class alongs
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from loguru import logger
 from sol.hooks import hookimpl
-
-logger = logging.getLogger(__name__)
 
 
 class OpenAPIHooks:
@@ -505,12 +502,12 @@ class OpenAPIHooks:
     def on_after_discover(self, url: str, adapter: Any) -> None:
         """Log when OpenAPI is selected."""
         if hasattr(adapter, "protocol_name"):
-            logger.info("OpenAPI adapter selected for %s", url)
+            logger.info("OpenAPI adapter selected for {}", url)
 
     @hookimpl
     def on_error(self, error: Exception) -> None:
         """Add OpenAPI-specific context to errors."""
-        logger.debug("OpenAPI plugin saw error: %s", error)
+        logger.debug("OpenAPI plugin saw error: {}", error)
 ```
 
 To have these hooks auto-loaded, register the hook class via the same entry point group or register it from your adapter's `__init__`:

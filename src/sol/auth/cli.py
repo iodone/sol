@@ -97,17 +97,23 @@ def auth_remove(
 def auth_bind(
     host: str = typer.Argument(..., help="Host glob pattern (e.g. '*.example.com')"),
     credential: str = typer.Argument(..., help="Profile name to bind"),
+    alias: Optional[str] = typer.Option(
+        None, "--alias", "-a", help="Short alias for this host (e.g. 'prod')"
+    ),
     priority: int = typer.Option(
         0, "--priority", "-p", help="Binding priority (higher wins)"
     ),
 ) -> None:
     """Bind a host pattern to an auth profile."""
-    binding = AuthBinding(host=host, credential=credential, priority=priority)
+    binding = AuthBinding(
+        host=host, credential=credential, alias=alias, priority=priority
+    )
     bindings = AuthBindings()
     bindings.load()
     bindings.add_binding(binding)
     bindings.save()
-    typer.echo(f"Bound '{host}' → '{credential}' (priority {priority})")
+    alias_info = f" (alias: {alias})" if alias else ""
+    typer.echo(f"Bound '{host}' → '{credential}'{alias_info} (priority {priority})")
 
 
 @auth_app.command("unbind")
@@ -136,4 +142,5 @@ def auth_bindings_list() -> None:
         typer.echo("No bindings configured.")
         return
     for b in items:
-        typer.echo(f"  {b.host} → {b.credential}  (priority {b.priority})")
+        alias_info = f" (alias: {b.alias})" if b.alias else ""
+        typer.echo(f"  {b.host} → {b.credential}{alias_info}  (priority {b.priority})")

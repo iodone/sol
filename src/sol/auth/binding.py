@@ -19,6 +19,7 @@ class AuthBinding(BaseModel):
 
     host: str  # glob pattern, e.g. "*.example.com" or "api.github.com"
     credential: str  # profile name
+    alias: str | None = None  # optional short name, e.g. "prod" for "api.example.com"
     priority: int = 0  # higher = preferred
 
 
@@ -88,11 +89,28 @@ class AuthBindings:
         """Return all bindings."""
         return list(self._bindings)
 
+    def resolve_alias(self, alias: str) -> str | None:
+        """Resolve an alias to its real host.
+
+        Args:
+            alias: The alias string (e.g., "prod")
+
+        Returns:
+            The real host if alias is found, None otherwise.
+        """
+        for binding in self._bindings:
+            if binding.alias and binding.alias.lower() == alias.lower():
+                return binding.host
+        return None
+
     def match(self, url: str, profiles: Profiles | None = None) -> Profile | None:
         """Find the best matching profile for a URL.
 
         Matches binding host patterns against the URL's hostname,
         picks the highest-priority match, then resolves the profile.
+
+        Supports alias resolution: if the URL hostname is an alias,
+        it will be expanded to the real host before matching.
 
         Args:
             url: The target URL to match against.
@@ -107,6 +125,11 @@ class AuthBindings:
         hostname = (parsed.hostname or "").lower()
         if not hostname:
             return None
+
+        # Try alias resolution first
+        real_host = self.resolve_alias(hostname)
+        if real_host:
+            hostname = real_host.lower()
 
         # Find all matching bindings, sorted by priority descending
         matches = [

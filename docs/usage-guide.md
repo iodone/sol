@@ -36,6 +36,10 @@ sol auth bind eu-key --host echo-eu.example.com --alias eu
 sol auth bind dev-key --host echo-dev.example.com --alias dev
 ```
 
+**Alias naming guidelines:**
+- ✅ Recommended: `prod`, `us-west`, `api-v2`, `region.eu`
+- ❌ Avoid: `region/us` (slashes are URL path separators and won't work as expected)
+
 ### Step 3: Discover Operations
 
 Check what each region supports:

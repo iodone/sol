@@ -105,6 +105,23 @@ def auth_bind(
     ),
 ) -> None:
     """Bind a host pattern to an auth profile."""
+    # Validate alias format
+    if alias and "/" in alias:
+        typer.echo(
+            "Warning: Alias contains '/' which will be interpreted as a URL path separator.",
+            err=True,
+        )
+        typer.echo(
+            f"  URL 'echo://{alias}' → hostname='{alias.split('/')[0]}', path='/{alias.split('/', 1)[1]}'",
+            err=True,
+        )
+        typer.echo(
+            "  Recommended: Use '-' or '.' instead (e.g., 'region-us' or 'region.us')",
+            err=True,
+        )
+        if not typer.confirm("Continue anyway?", default=False):
+            raise typer.Abort()
+
     binding = AuthBinding(
         host=host, credential=credential, alias=alias, priority=priority
     )

@@ -26,13 +26,22 @@ class AdapterRegistry:
         self.adapters: list[Adapter] = []
         self.discover_adapters()
 
+    def register_adapter(self, adapter: Adapter) -> None:
+        """Register a built-in adapter instance directly."""
+        if isinstance(adapter, Adapter):
+            self.adapters.append(adapter)
+            logger.info("Registered built-in adapter: %s", type(adapter).__name__)
+        else:
+            logger.warning(
+                "Attempted to register non-Adapter instance: %s", type(adapter).__name__
+            )
+
     def discover_adapters(self) -> list[Adapter]:
         """Scan entry points and instantiate all installed adapters.
 
         Returns the list of discovered adapter instances sorted by priority
         (highest first).
         """
-        self.adapters = []
         eps = importlib.metadata.entry_points(group="sol.adapters")
         for ep in eps:
             try:

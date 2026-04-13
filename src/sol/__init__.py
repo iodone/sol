@@ -29,6 +29,13 @@ class SolFramework:
         self.pm.add_hookspecs(SolHookSpecs)
         self._load_entry_point_plugins()
         self.registry = AdapterRegistry(plugin_manager=self.pm)
+        self._register_builtin_adapters()
+
+    def _register_builtin_adapters(self) -> None:
+        """Register built-in adapters that ship with sol core."""
+        from sol.adapters import OpenAPIAdapter
+
+        self.registry.register_adapter(OpenAPIAdapter())
 
     def _load_entry_point_plugins(self) -> None:
         """Load plugins from the ``sol.adapters`` entry-point group.
@@ -64,10 +71,12 @@ class SolFramework:
 Sol = SolFramework
 
 from sol.standalone import standalone_cli
+from sol.adapters import OpenAPIAdapter
 
 __all__ = [
     "Adapter",
     "AdapterRegistry",
+    "OpenAPIAdapter",
     "Operation",
     "OperationDetail",
     "OutputEnvelope",

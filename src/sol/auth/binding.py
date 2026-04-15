@@ -96,10 +96,19 @@ class AuthBindings:
             alias: The alias string (e.g., "prod")
 
         Returns:
-            The real host if alias is found, None otherwise.
+            The real hostname (without scheme) if alias is found, None otherwise.
+            
+        Example:
+            >>> # binding: http://api-gateway.dptest.pt.xiaomi.com → staging
+            >>> bindings.resolve_alias("staging")
+            "api-gateway.dptest.pt.xiaomi.com"  # hostname only, no http://
         """
         for binding in self._bindings:
             if binding.alias and binding.alias.lower() == alias.lower():
+                # Extract hostname from binding.host (which may include scheme)
+                if "://" in binding.host:
+                    parsed = urlparse(binding.host)
+                    return parsed.netloc or parsed.hostname or binding.host
                 return binding.host
         return None
 

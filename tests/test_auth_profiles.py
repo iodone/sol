@@ -47,6 +47,41 @@ class TestProfile:
         with pytest.raises(AuthError, match="not set"):
             profile.resolve_secret()
 
+    def test_custom_auth_has_custom_headers(self):
+        """Custom auth type should use custom_headers."""
+        profile = Profile(
+            name="datum",
+            auth_type=AuthType.custom,
+            custom_headers={
+                "Authorization": "workspace-token/1.0 abc123",
+                "X-Custom-Header": "custom-value",
+            },
+        )
+        assert profile.custom_headers == {
+            "Authorization": "workspace-token/1.0 abc123",
+            "X-Custom-Header": "custom-value",
+        }
+
+    def test_custom_auth_resolve_secret_raises(self):
+        """Custom auth type should not call resolve_secret()."""
+        profile = Profile(
+            name="datum",
+            auth_type=AuthType.custom,
+            custom_headers={"Authorization": "workspace-token/1.0 abc123"},
+        )
+        with pytest.raises(AuthError, match="Cannot resolve secret for custom auth type"):
+            profile.resolve_secret()
+
+    def test_custom_auth_without_secret_source(self):
+        """Custom auth type does not require secret_source."""
+        profile = Profile(
+            name="datum",
+            auth_type=AuthType.custom,
+            custom_headers={"Authorization": "workspace-token/1.0 abc123"},
+        )
+        assert profile.secret_source is None
+        assert profile.custom_headers is not None
+
 
 class TestAuthType:
     """Test AuthType enum."""
@@ -137,3 +172,136 @@ class TestProfilesCRUD:
         store = Profiles(path=path)
         with pytest.raises(AuthError, match="Failed to load"):
             store.load()
+
+
+class TestMakeAuthHeaders:
+    """Test make_auth_headers() for different auth types."""
+
+    def test_bearer_auth_headers(self):
+        from sol.auth import make_auth_headers
+
+        profile = Profile(
+            name="test",
+            auth_type=AuthType.bearer,
+            secret_source=LiteralSecret(value="my-bearer-token"),
+        )
+        headers = make_auth_headers(profile)
+        assert headers == {"Authorization": "Bearer my-bearer-token"}
+
+    def test_api_key_auth_headers(self):
+        from sol.auth import make_auth_headers
+
+        profile = Profile(
+            name="test",
+            auth_type=AuthType.api_key,
+            secret_source=LiteralSecret(value="my-api-key"),
+        )
+        headers = make_auth_headers(profile)
+        assert headers == {"X-API-Key": "my-api-key"}
+
+    def test_basic_auth_headers(self):
+        from sol.auth import make_auth_headers
+        import base64
+
+        profile = Profile(
+            name="test",
+            auth_type=AuthType.basic,
+            secret_source=LiteralSecret(value="user:pass"),
+        )
+        headers = make_auth_headers(profile)
+        expected = base64.b64encode(b"user:pass").decode("ascii")
+        assert headers == {"Authorization": f"Basic {expected}"}
+
+    def test_custom_auth_headers(self):
+        from sol.auth import make_auth_headers
+
+        profile = Profile(
+            name="datum",
+            auth_type=AuthType.custom,
+            custom_headers={
+                "Authorization": "workspace-token/1.0 abc123",
+                "X-Workspace-ID": "10122",
+            },
+        )
+        headers = make_auth_headers(profile)
+        assert headers == {
+            "Authorization": "workspace-token/1.0 abc123",
+            "X-Workspace-ID": "10122",
+        }
+
+    def test_custom_auth_empty_headers(self):
+        from sol.auth import make_auth_headers
+
+        profile = Profile(
+            name="datum",
+            auth_type=AuthType.custom,
+            custom_headers={},
+        )
+        headers = make_auth_headers(profile)
+        assert headers == {}
+
+
+class TestInjectAuth:
+    """Test inject_auth() for different auth types."""
+
+    def test_bearer_inject(self):
+        import httpx
+        from sol.auth import inject_auth
+
+        profile = Profile(
+            name="test",
+            auth_type=AuthType.bearer,
+            secret_source=LiteralSecret(value="my-token"),
+        )
+        req = httpx.Request("GET", "https://api.example.com")
+        inject_auth(req, profile)
+        assert req.headers["Authorization"] == "Bearer my-token"
+
+    def test_api_key_inject(self):
+        import httpx
+        from sol.auth import inject_auth
+
+        profile = Profile(
+            name="test",
+            auth_type=AuthType.api_key,
+            secret_source=LiteralSecret(value="my-key"),
+        )
+        req = httpx.Request("GET", "https://api.example.com")
+        inject_auth(req, profile)
+        assert req.headers["X-API-Key"] == "my-key"
+
+    def test_custom_inject(self):
+        import httpx
+        from sol.auth import inject_auth
+
+        profile = Profile(
+            name="datum",
+            auth_type=AuthType.custom,
+            custom_headers={
+                "Authorization": "workspace-token/1.0 abc123",
+                "X-Custom": "value",
+            },
+        )
+        req = httpx.Request("GET", "https://api.example.com")
+        inject_auth(req, profile)
+        assert req.headers["Authorization"] == "workspace-token/1.0 abc123"
+        assert req.headers["X-Custom"] == "value"
+
+    def test_custom_inject_multiple_headers(self):
+        import httpx
+        from sol.auth import inject_auth
+
+        profile = Profile(
+            name="test",
+            auth_type=AuthType.custom,
+            custom_headers={
+                "Authorization": "custom-auth-value",
+                "X-API-Version": "v2",
+                "X-Client-ID": "client123",
+            },
+        )
+        req = httpx.Request("GET", "https://api.example.com")
+        inject_auth(req, profile)
+        assert req.headers["Authorization"] == "custom-auth-value"
+        assert req.headers["X-API-Version"] == "v2"
+        assert req.headers["X-Client-ID"] == "client123"

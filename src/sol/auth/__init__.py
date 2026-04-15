@@ -58,7 +58,16 @@ def inject_auth(request: httpx.Request, profile: Profile) -> httpx.Request:
     - api_key: X-API-Key header (default) with the secret value
     - basic: Authorization: Basic <base64(secret)> where secret is "user:password"
     - oauth2: Authorization: Bearer <secret> (same as bearer, token from resolve_secret)
+    - custom: Apply custom_headers directly (no processing)
     """
+    if profile.auth_type == AuthType.custom:
+        # Custom auth: use custom_headers directly
+        if profile.custom_headers:
+            for key, value in profile.custom_headers.items():
+                request.headers[key] = value
+        return request
+    
+    # Standard auth types: resolve secret and apply
     secret = profile.resolve_secret()
 
     if profile.auth_type == AuthType.bearer:
@@ -87,6 +96,11 @@ def make_auth_headers(profile: Profile) -> dict[str, str]:
     For OAuth2 profiles, use resolve_auth_headers() which handles
     session loading and token refresh.
     """
+    if profile.auth_type == AuthType.custom:
+        # Custom auth: return custom_headers directly
+        return profile.custom_headers or {}
+    
+    # Standard auth types: resolve secret and build headers
     secret = profile.resolve_secret()
 
     if profile.auth_type == AuthType.bearer:

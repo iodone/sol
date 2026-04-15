@@ -302,12 +302,15 @@ async def _run_pipeline(
 ) -> OutputEnvelope:
     """Inner pipeline with protocol detection, auth, then core pipeline."""
     from contextlib import contextmanager
+    from urllib.parse import urlparse
 
     from rich.status import Status
 
     from sol.auth import resolve_auth_headers
+    from sol.auth.binding import AuthBindings
     from sol.formatter import _is_tty, get_console
     from sol.pipeline import run_pipeline
+    from loguru import logger
 
     @contextmanager
     def spinner(message: str):
@@ -319,6 +322,22 @@ async def _run_pipeline(
         else:
             yield
 
+    # --- Alias resolution (before protocol detection) ---
+    original_url = url
+    parsed = urlparse(url)
+    if parsed.hostname:
+        bindings = AuthBindings()
+        bindings.load()
+        real_host = bindings.resolve_alias(parsed.hostname)
+        if real_host:
+            # Keep original scheme (datum://, echo://), only replace hostname
+            # datum://staging.10122/path → datum://api-gateway.dptest.pt.xiaomi.com/path
+            port_part = f":{parsed.port}" if parsed.port else ""
+            path_part = parsed.path or ""
+            query_part = f"?{parsed.query}" if parsed.query else ""
+            url = f"{parsed.scheme}://{real_host}{port_part}{path_part}{query_part}"
+            logger.debug("Alias '{}' resolved to '{}'", parsed.hostname, real_host)
+
     try:
         with spinner("Detecting protocol…"):
             adapter = await framework.registry.detect_protocol(url)
@@ -326,7 +345,7 @@ async def _run_pipeline(
         return OutputEnvelope.error(
             code="NO_ADAPTER",
             message=exc.message,
-            endpoint=url,
+            endpoint=original_url,
             details=exc.details,
         )
 
@@ -343,7 +362,7 @@ async def _run_pipeline(
         return OutputEnvelope.error(
             code="AUTH_FAILED",
             message=exc.message,
-            endpoint=url,
+            endpoint=original_url,
             details=exc.details,
         )
 

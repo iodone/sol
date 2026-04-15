@@ -431,4 +431,5 @@ async def _run_pipeline(
         ttl=ttl,
         auth_headers=auth_headers,
         cli_name="sol",
+        display_url=original_url,  # Use original URL for display
     )

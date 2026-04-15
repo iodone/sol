@@ -20,13 +20,19 @@ async def discover(
     adapter: Adapter,
     url: str,
     *,
+    endpoint: str | None = None,
     cache: SchemaCache | None = None,
     ttl: int = 3600,
     cli_name: str = "sol",
 ) -> OutputEnvelope:
-    """List all operations available at *url* via *adapter*."""
+    """List all operations available at *url* via *adapter*.
+
+    Args:
+        endpoint: Optional URL to display in output (defaults to url)
+    """
     protocol = await adapter.protocol_name()
     cache_key = f"discovery:{url}"
+    display_endpoint = endpoint or url
 
     if cache is not None:
         entry = await cache.get(cache_key, stale_ok=True)
@@ -40,7 +46,7 @@ async def discover(
             return OutputEnvelope.success(
                 kind="discovery",
                 protocol=protocol,
-                endpoint=url,
+                endpoint=display_endpoint,
                 data=entry.schema_data,
                 meta=meta,
             )
@@ -52,7 +58,9 @@ async def discover(
             "operations": op_dicts,
             "count": len(op_dicts),
             "examples": (
-                [f"{cli_name} {url} {ops[0].operation_id} key=value"] if ops else []
+                [f"{cli_name} {display_endpoint} {ops[0].operation_id} key=value"]
+                if ops
+                else []
             ),
         }
         if cache is not None:
@@ -60,14 +68,14 @@ async def discover(
         return OutputEnvelope.success(
             kind="discovery",
             protocol=protocol,
-            endpoint=url,
+            endpoint=display_endpoint,
             data=data,
         )
     except SolError as exc:
         return OutputEnvelope.error(
             code="DISCOVERY_FAILED",
             message=exc.message,
-            endpoint=url,
+            endpoint=display_endpoint,
             protocol=protocol,
             details=exc.details,
         )
@@ -78,13 +86,19 @@ async def inspect(
     url: str,
     operation: str,
     *,
+    endpoint: str | None = None,
     cache: SchemaCache | None = None,
     ttl: int = 3600,
     cli_name: str = "sol",
 ) -> OutputEnvelope:
-    """Describe a single operation."""
+    """Describe a single operation.
+
+    Args:
+        endpoint: Optional URL to display in output (defaults to url)
+    """
     protocol = await adapter.protocol_name()
     cache_key = f"inspect:{url}:{operation}"
+    display_endpoint = endpoint or url
 
     if cache is not None:
         entry = await cache.get(cache_key, stale_ok=True)
@@ -98,7 +112,7 @@ async def inspect(
             return OutputEnvelope.success(
                 kind="inspect",
                 protocol=protocol,
-                endpoint=url,
+                endpoint=display_endpoint,
                 operation=operation,
                 data=entry.schema_data,
                 meta=meta,
@@ -115,7 +129,7 @@ async def inspect(
             else:
                 example_args = "key=value"
             detail.invocation_examples = [
-                f"{cli_name} {url} {operation} {example_args}"
+                f"{cli_name} {display_endpoint} {operation} {example_args}"
             ]
         data = detail.model_dump()
         if cache is not None:
@@ -123,7 +137,7 @@ async def inspect(
         return OutputEnvelope.success(
             kind="inspect",
             protocol=protocol,
-            endpoint=url,
+            endpoint=display_endpoint,
             operation=operation,
             data=data,
         )
@@ -131,7 +145,7 @@ async def inspect(
         return OutputEnvelope.error(
             code="INSPECT_FAILED",
             message=exc.message,
-            endpoint=url,
+            endpoint=display_endpoint,
             operation=operation,
             protocol=protocol,
             details=exc.details,
@@ -144,10 +158,16 @@ async def invoke(
     operation: str,
     args: dict[str, Any],
     *,
+    endpoint: str | None = None,
     auth_headers: dict[str, str] | None = None,
 ) -> OutputEnvelope:
-    """Execute an operation."""
+    """Execute an operation.
+
+    Args:
+        endpoint: Optional URL to display in output (defaults to url)
+    """
     protocol = await adapter.protocol_name()
+    display_endpoint = endpoint or url
     t0 = time.monotonic()
 
     try:
@@ -156,7 +176,7 @@ async def invoke(
         return OutputEnvelope.success(
             kind="invocation",
             protocol=protocol,
-            endpoint=url,
+            endpoint=display_endpoint,
             operation=operation,
             data=result.data,
             meta=Metadata(duration_ms=duration),
@@ -165,7 +185,7 @@ async def invoke(
         return OutputEnvelope.error(
             code="EXECUTION_FAILED",
             message=exc.message,
-            endpoint=url,
+            endpoint=display_endpoint,
             operation=operation,
             protocol=protocol,
             details=exc.details,
@@ -183,6 +203,7 @@ async def run_pipeline(
     ttl: int = 3600,
     auth_headers: dict[str, str] | None = None,
     cli_name: str = "sol",
+    display_url: str | None = None,
 ) -> OutputEnvelope:
     """Route to discover / inspect / invoke based on operation and flags.
 
@@ -190,11 +211,28 @@ async def run_pipeline(
       - operation is None          → discover
       - operation + api_help       → inspect
       - operation (± args)         → invoke
+
+    Args:
+        display_url: Optional URL to display in output (e.g., original datum:// URL)
+                     If None, uses `url` for display.
     """
+    # Use display_url for user-facing output, url for execution
+    endpoint = display_url or url
+
     if operation is None:
-        return await discover(adapter, url, cache=cache, ttl=ttl, cli_name=cli_name)
+        return await discover(
+            adapter, url, endpoint=endpoint, cache=cache, ttl=ttl, cli_name=cli_name
+        )
     if api_help and not args:
         return await inspect(
-            adapter, url, operation, cache=cache, ttl=ttl, cli_name=cli_name
+            adapter,
+            url,
+            operation,
+            endpoint=endpoint,
+            cache=cache,
+            ttl=ttl,
+            cli_name=cli_name,
         )
-    return await invoke(adapter, url, operation, args, auth_headers=auth_headers)
+    return await invoke(
+        adapter, url, operation, args, endpoint=endpoint, auth_headers=auth_headers
+    )

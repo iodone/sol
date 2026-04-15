@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import sys
 from typing import Any, Optional
@@ -349,25 +350,38 @@ async def _run_pipeline(
             details=exc.details,
         )
 
-    # --- Scheme normalization for HTTP-based custom protocols ---
-    # Convert custom schemes (datum://, echo://, etc.) to https:// for HTTP execution
-    # while keeping the original scheme for protocol detection
-    execution_url = url
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https", "ws", "wss"):
-        # Custom scheme → assume HTTPS for actual HTTP requests
-        port_part = f":{parsed.port}" if parsed.port else ""
-        path_part = parsed.path or ""
-        query_part = f"?{parsed.query}" if parsed.query else ""
-        execution_url = f"https://{parsed.netloc}{port_part}{path_part}{query_part}"
-        logger.debug(
-            "Normalized custom scheme '{}' to https:// for execution",
-            parsed.scheme,
-        )
-
-    # --- Auth resolution ---
+    # --- Auth resolution (before scheme normalization) ---
     auth_headers: dict[str, str] | None = None
+    matched_binding_host: str | None = None
     try:
+        # Get auth headers and also the matched binding host
+        from sol.auth.binding import AuthBindings
+
+        bindings = AuthBindings()
+        bindings.load()
+
+        # Find matched binding to infer scheme
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if hostname:
+            real_host = bindings.resolve_alias(hostname)
+            if real_host:
+                hostname = real_host.lower()
+
+            # Find matching binding
+            for binding in bindings._bindings:
+                binding_host = binding.host.lower()
+                if "://" in binding_host:
+                    # Scheme-aware binding: extract scheme
+                    binding_parsed = urlparse(binding_host)
+                    if fnmatch.fnmatch(hostname, binding_parsed.hostname or ""):
+                        matched_binding_host = binding_host
+                        break
+                elif fnmatch.fnmatch(hostname, binding_host):
+                    # Scheme-agnostic binding: use default https
+                    matched_binding_host = f"https://{binding_host}"
+                    break
+
         auth_headers, profile = await resolve_auth_headers(url, credential=credential)
 
         # Fire on_before_auth hook — plugins can override headers
@@ -380,6 +394,29 @@ async def _run_pipeline(
             message=exc.message,
             endpoint=original_url,
             details=exc.details,
+        )
+
+    # --- Scheme normalization for HTTP-based custom protocols ---
+    # Use scheme from matched binding (if available), otherwise default to https
+    execution_url = url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https", "ws", "wss"):
+        # Infer scheme from binding or default to https
+        target_scheme = "https"
+        if matched_binding_host and "://" in matched_binding_host:
+            binding_parsed = urlparse(matched_binding_host)
+            target_scheme = binding_parsed.scheme or "https"
+
+        port_part = f":{parsed.port}" if parsed.port else ""
+        path_part = parsed.path or ""
+        query_part = f"?{parsed.query}" if parsed.query else ""
+        execution_url = (
+            f"{target_scheme}://{parsed.netloc}{port_part}{path_part}{query_part}"
+        )
+        logger.debug(
+            "Normalized custom scheme '{}' to {}:// (inferred from binding)",
+            parsed.scheme,
+            target_scheme,
         )
 
     ttl = settings.cache_ttl if settings else 3600

@@ -109,8 +109,15 @@ class AuthBindings:
         Matches binding host patterns against the URL's hostname,
         picks the highest-priority match, then resolves the profile.
 
-        Supports alias resolution: if the URL hostname is an alias,
-        it will be expanded to the real host before matching.
+        Supports:
+        - Alias resolution: staging → real host
+        - Scheme-aware matching: https://host matches only https://
+        - Scheme-agnostic matching: host matches any scheme
+
+        Matching priority (highest first):
+        1. Exact scheme + host match (e.g., "https://api.example.com")
+        2. Wildcard host match (e.g., "*.example.com")
+        3. Scheme-agnostic host match (e.g., "api.example.com")
 
         Args:
             url: The target URL to match against.
@@ -123,6 +130,8 @@ class AuthBindings:
         """
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").lower()
+        scheme = parsed.scheme.lower() if parsed.scheme else ""
+
         if not hostname:
             return None
 
@@ -131,15 +140,30 @@ class AuthBindings:
         if real_host:
             hostname = real_host.lower()
 
-        # Find all matching bindings, sorted by priority descending
-        matches = [
-            b for b in self._bindings if fnmatch.fnmatch(hostname, b.host.lower())
-        ]
+        # Find all matching bindings
+        matches = []
+        for binding in self._bindings:
+            binding_host = binding.host.lower()
+
+            # Check if binding includes scheme (contains ://)
+            if "://" in binding_host:
+                # Scheme-aware binding: must match both scheme and host
+                binding_parsed = urlparse(binding_host)
+                if binding_parsed.scheme == scheme and fnmatch.fnmatch(
+                    hostname, binding_parsed.hostname or ""
+                ):
+                    matches.append((binding, 2))  # Priority boost for exact match
+            else:
+                # Scheme-agnostic binding: match only host
+                if fnmatch.fnmatch(hostname, binding_host):
+                    matches.append((binding, 1))  # Lower priority
+
         if not matches:
             return None
 
-        # Pick highest priority
-        best = max(matches, key=lambda b: b.priority)
+        # Sort by: 1) match type (scheme-aware > agnostic), 2) binding priority
+        matches.sort(key=lambda m: (m[1], m[0].priority), reverse=True)
+        best = matches[0][0]
 
         # Resolve to a profile
         if profiles is None:

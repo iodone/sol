@@ -20,6 +20,7 @@ class AuthType(str, Enum):
     api_key = "api_key"
     basic = "basic"
     oauth2 = "oauth2"
+    custom = "custom"  # Custom headers (no automatic processing)
 
 
 class LiteralSecret(BaseModel):
@@ -43,19 +44,36 @@ SecretSource = Annotated[
 
 
 class Profile(BaseModel):
-    """A single credential profile."""
+    """A single credential profile.
+    
+    For custom auth type, provide custom_headers instead of secret_source.
+    For other types (bearer, api_key, basic, oauth2), provide secret_source.
+    """
 
     name: str
     auth_type: AuthType
-    secret_source: SecretSource
+    secret_source: SecretSource | None = None  # Required for non-custom types
+    custom_headers: dict[str, str] | None = None  # Required for custom type
     description: str = ""
 
     def resolve_secret(self) -> str:
         """Resolve the secret value from its source.
 
         Returns the plaintext secret string.
-        Raises AuthError if an env var reference is unset.
+        Raises AuthError if an env var reference is unset or auth_type is custom.
         """
+        if self.auth_type == AuthType.custom:
+            raise AuthError(
+                "Cannot resolve secret for custom auth type",
+                details="Custom auth uses custom_headers directly, not secret_source.",
+            )
+        
+        if self.secret_source is None:
+            raise AuthError(
+                f"Profile '{self.name}' has no secret_source",
+                details=f"Auth type '{self.auth_type}' requires secret_source.",
+            )
+        
         src = self.secret_source
         if isinstance(src, LiteralSecret):
             return src.value

@@ -350,11 +350,9 @@ async def _run_pipeline(
             details=exc.details,
         )
 
-    # --- Auth resolution (before scheme normalization) ---
-    auth_headers: dict[str, str] | None = None
+    # --- Find matched binding for scheme inference ---
     matched_binding_host: str | None = None
     try:
-        # Get auth headers and also the matched binding host
         from sol.auth.binding import AuthBindings
 
         bindings = AuthBindings()
@@ -368,11 +366,11 @@ async def _run_pipeline(
             if real_host:
                 hostname = real_host.lower()
 
-            # Find matching binding
+            # Find matching binding (ignore scheme for now, just match hostname)
             for binding in bindings._bindings:
                 binding_host = binding.host.lower()
                 if "://" in binding_host:
-                    # Scheme-aware binding: extract scheme
+                    # Scheme-aware binding: extract hostname
                     binding_parsed = urlparse(binding_host)
                     if fnmatch.fnmatch(hostname, binding_parsed.hostname or ""):
                         matched_binding_host = binding_host
@@ -381,20 +379,9 @@ async def _run_pipeline(
                     # Scheme-agnostic binding: use default https
                     matched_binding_host = f"https://{binding_host}"
                     break
-
-        auth_headers, profile = await resolve_auth_headers(url, credential=credential)
-
-        # Fire on_before_auth hook — plugins can override headers
-        hook_headers = framework.hook.on_before_auth(url=url, profile=profile)
-        if hook_headers is not None:
-            auth_headers = hook_headers
-    except SolError as exc:
-        return OutputEnvelope.error(
-            code="AUTH_FAILED",
-            message=exc.message,
-            endpoint=original_url,
-            details=exc.details,
-        )
+    except Exception:
+        # Binding resolution is best-effort for scheme inference
+        pass
 
     # --- Scheme normalization for HTTP-based custom protocols ---
     # Use scheme from matched binding (if available), otherwise default to https
@@ -417,6 +404,25 @@ async def _run_pipeline(
             "Normalized custom scheme '{}' to {}:// (inferred from binding)",
             parsed.scheme,
             target_scheme,
+        )
+
+    # --- Auth resolution (after scheme normalization) ---
+    auth_headers: dict[str, str] | None = None
+    try:
+        auth_headers, profile = await resolve_auth_headers(
+            execution_url, credential=credential
+        )
+
+        # Fire on_before_auth hook — plugins can override headers
+        hook_headers = framework.hook.on_before_auth(url=execution_url, profile=profile)
+        if hook_headers is not None:
+            auth_headers = hook_headers
+    except SolError as exc:
+        return OutputEnvelope.error(
+            code="AUTH_FAILED",
+            message=exc.message,
+            endpoint=original_url,
+            details=exc.details,
         )
 
     ttl = settings.cache_ttl if settings else 3600

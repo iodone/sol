@@ -349,6 +349,22 @@ async def _run_pipeline(
             details=exc.details,
         )
 
+    # --- Scheme normalization for HTTP-based custom protocols ---
+    # Convert custom schemes (datum://, echo://, etc.) to https:// for HTTP execution
+    # while keeping the original scheme for protocol detection
+    execution_url = url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https", "ws", "wss"):
+        # Custom scheme → assume HTTPS for actual HTTP requests
+        port_part = f":{parsed.port}" if parsed.port else ""
+        path_part = parsed.path or ""
+        query_part = f"?{parsed.query}" if parsed.query else ""
+        execution_url = f"https://{parsed.netloc}{port_part}{path_part}{query_part}"
+        logger.debug(
+            "Normalized custom scheme '{}' to https:// for execution",
+            parsed.scheme,
+        )
+
     # --- Auth resolution ---
     auth_headers: dict[str, str] | None = None
     try:
@@ -370,7 +386,7 @@ async def _run_pipeline(
 
     return await run_pipeline(
         adapter,
-        url,
+        execution_url,  # Use normalized URL for execution
         operation,
         args,
         api_help=api_help,

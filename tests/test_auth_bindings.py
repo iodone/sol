@@ -135,6 +135,96 @@ class TestAuthBindingsCRUD:
         assert bindings.remove_binding("nope.com", "nope") is False
 
 
+class TestAuthBindingsResolveAlias:
+    """Test alias resolution."""
+
+    def test_resolve_alias_with_scheme_http(self):
+        """resolve_alias should strip http:// scheme from binding.host."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(
+                host="http://api-gateway.dptest.pt.xiaomi.com",
+                credential="test-cred",
+                alias="staging",
+            ),
+        ]
+        resolved = bindings.resolve_alias("staging")
+        assert resolved == "api-gateway.dptest.pt.xiaomi.com"
+
+    def test_resolve_alias_with_scheme_https(self):
+        """resolve_alias should strip https:// scheme from binding.host."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(
+                host="https://api-gateway.dp.pt.xiaomi.com",
+                credential="prod-cred",
+                alias="prod",
+            ),
+        ]
+        resolved = bindings.resolve_alias("prod")
+        assert resolved == "api-gateway.dp.pt.xiaomi.com"
+
+    def test_resolve_alias_without_scheme(self):
+        """resolve_alias should return hostname as-is if no scheme present."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(
+                host="api.example.com",
+                credential="example-cred",
+                alias="example",
+            ),
+        ]
+        resolved = bindings.resolve_alias("example")
+        assert resolved == "api.example.com"
+
+    def test_resolve_alias_with_port(self):
+        """resolve_alias should preserve port in hostname."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(
+                host="http://localhost:8080",
+                credential="local-cred",
+                alias="local",
+            ),
+        ]
+        resolved = bindings.resolve_alias("local")
+        assert resolved == "localhost:8080"
+
+    def test_resolve_alias_case_insensitive(self):
+        """resolve_alias should be case-insensitive."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(
+                host="https://api.github.com",
+                credential="gh",
+                alias="GitHub",
+            ),
+        ]
+        assert bindings.resolve_alias("github") == "api.github.com"
+        assert bindings.resolve_alias("GITHUB") == "api.github.com"
+        assert bindings.resolve_alias("GitHub") == "api.github.com"
+
+    def test_resolve_alias_not_found(self):
+        """resolve_alias should return None if alias not found."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(
+                host="https://api.example.com",
+                credential="test",
+                alias="example",
+            ),
+        ]
+        assert bindings.resolve_alias("nonexistent") is None
+
+    def test_resolve_alias_no_alias_field(self):
+        """resolve_alias should return None if binding has no alias."""
+        bindings = AuthBindings(path=None)
+        bindings._bindings = [
+            AuthBinding(host="https://api.example.com", credential="test"),
+        ]
+        assert bindings.resolve_alias("example") is None
+
+
 class TestAuthBindingsPersistence:
     """Test save/load."""
 

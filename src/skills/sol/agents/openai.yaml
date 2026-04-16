@@ -1,0 +1,12 @@
+name: sol
+description: Universal API CLI with pluggable protocol adapters
+category: api
+tags:
+  - api
+  - cli
+  - protocol
+  - adapter
+  - openapi
+  - datum
+author: iodone
+version: 0.2.0

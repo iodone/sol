@@ -1,0 +1,10 @@
+name: sol-skill-creator
+description: Create wrapper skills for Sol protocol adapters
+category: development
+tags:
+  - skill-creation
+  - adapter
+  - template
+  - development
+author: iodone
+version: 0.1.0

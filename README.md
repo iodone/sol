@@ -30,6 +30,20 @@ This turns remote interfaces into **stable command entry points** rather than a 
 uv add sol
 ```
 
+### Skills Installation
+
+Sol includes skills for AI agents (Alma, etc.). Skills are automatically installed to `~/.agents/skills/` during package installation.
+
+If skills are not installed automatically, run:
+
+```bash
+sol-install-skills
+```
+
+This installs:
+- `sol` — Sol CLI usage guide for agents
+- `sol-skill-creator` — Protocol adapter development guide
+
 ## Quick Start
 
 ### Discover → Inspect → Invoke

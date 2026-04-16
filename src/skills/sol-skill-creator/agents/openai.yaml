@@ -1,0 +1,9 @@
+name: sol-skill-creator
+description: Create protocol adapter packages for Sol
+category: development
+tags:
+  - adapter
+  - plugin
+  - development
+author: iodone
+version: 0.1.0

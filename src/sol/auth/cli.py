@@ -103,6 +103,9 @@ def auth_bind(
     priority: int = typer.Option(
         0, "--priority", "-p", help="Binding priority (higher wins)"
     ),
+    meta: Optional[list[str]] = typer.Option(
+        None, "--meta", "-m", help="Metadata key=value pairs (e.g., --meta region=chnbj)"
+    ),
 ) -> None:
     """Bind a host pattern to an auth profile."""
     # Validate alias format
@@ -122,15 +125,27 @@ def auth_bind(
         if not typer.confirm("Continue anyway?", default=False):
             raise typer.Abort()
 
+    # Parse meta key=value pairs
+    meta_dict: dict[str, str] | None = None
+    if meta:
+        meta_dict = {}
+        for item in meta:
+            if "=" not in item:
+                typer.echo(f"Error: Invalid meta format '{item}' (expected key=value)", err=True)
+                raise typer.Exit(code=1)
+            key, value = item.split("=", 1)
+            meta_dict[key.strip()] = value.strip()
+
     binding = AuthBinding(
-        host=host, credential=credential, alias=alias, priority=priority
+        host=host, credential=credential, alias=alias, priority=priority, meta=meta_dict
     )
     bindings = AuthBindings()
     bindings.load()
     bindings.add_binding(binding)
     bindings.save()
     alias_info = f" (alias: {alias})" if alias else ""
-    typer.echo(f"Bound '{host}' → '{credential}'{alias_info} (priority {priority})")
+    meta_info = f" meta={meta_dict}" if meta_dict else ""
+    typer.echo(f"Bound '{host}' → '{credential}'{alias_info}{meta_info} (priority {priority})")
 
 
 @auth_app.command("unbind")

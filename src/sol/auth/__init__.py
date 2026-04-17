@@ -126,8 +126,8 @@ async def resolve_auth_headers(
     credential: str | None = None,
     profiles: Profiles | None = None,
     bindings: AuthBindings | None = None,
-) -> tuple[dict[str, str] | None, Profile | None]:
-    """Resolve auth headers for a URL.
+) -> tuple[dict[str, str] | None, Profile | None, AuthBinding | None]:
+    """Resolve auth headers for a URL, with binding metadata.
 
     Resolution order:
     1. If ``credential`` is given, load that named profile.
@@ -136,16 +136,17 @@ async def resolve_auth_headers(
        check expiry, and auto-refresh if needed.
 
     Returns:
-        A tuple of (headers_dict, profile). Both are None if no auth
-        was resolved.
+        A tuple of (headers_dict, profile, binding). All may be None if no auth
+        was resolved. binding contains metadata (meta field) for adapter use.
     """
     # Load profiles if not provided
     if profiles is None:
         profiles = Profiles()
         profiles.load()
 
-    # Step 1: Resolve profile
+    # Step 1: Resolve profile and binding
     profile: Profile | None = None
+    matched_binding: AuthBinding | None = None
 
     if credential is not None:
         profile = profiles.get_profile(credential)
@@ -155,13 +156,16 @@ async def resolve_auth_headers(
                 details="Use 'sol auth list' to see available profiles.",
             )
         logger.debug("Using explicit credential profile: %s", credential)
+        # No binding when using explicit credential
+        matched_binding = None
     else:
         # Auto-resolve via bindings
         if bindings is None:
             bindings = AuthBindings()
             bindings.load()
-        profile = bindings.match(url, profiles=profiles)
-        if profile is not None:
+        result = bindings.match_with_binding(url, profiles=profiles)
+        if result is not None:
+            profile, matched_binding = result
             logger.debug(
                 "Auto-resolved credential profile '%s' for %s", profile.name, url
             )
@@ -169,7 +173,7 @@ async def resolve_auth_headers(
             logger.debug("No credential profile matched for %s", url)
 
     if profile is None:
-        return None, None
+        return None, None, None
 
     # Step 2: Handle OAuth2 session refresh
     if profile.auth_type == AuthType.oauth2:
@@ -206,7 +210,7 @@ async def resolve_auth_headers(
                     )
 
             # Use the (possibly refreshed) session token
-            return {"Authorization": f"Bearer {session.access_token}"}, profile
+            return {" Authorization": f"Bearer {session.access_token}"}, profile, matched_binding
         # No session on disk — fall through to resolve_secret
         logger.debug(
             "No OAuth2 session on disk for '%s', using profile secret", profile.name
@@ -214,4 +218,4 @@ async def resolve_auth_headers(
 
     # Step 3: Produce headers from profile
     headers = make_auth_headers(profile)
-    return headers, profile
+    return headers, profile, matched_binding

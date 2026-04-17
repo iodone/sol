@@ -21,6 +21,7 @@ class AuthBinding(BaseModel):
     credential: str  # profile name
     alias: str | None = None  # optional short name, e.g. "prod" for "api.example.com"
     priority: int = 0  # higher = preferred
+    meta: dict[str, str] | None = None  # optional metadata (e.g., region, workspace)
 
 
 # Default bindings file path
@@ -137,6 +138,19 @@ class AuthBindings:
             The matched Profile, or None if no binding matches or
             the referenced profile doesn't exist.
         """
+        result = self.match_with_binding(url, profiles)
+        return result[0] if result else None
+
+    def match_with_binding(
+        self, url: str, profiles: Profiles | None = None
+    ) -> tuple[Profile, AuthBinding] | None:
+        """Find the best matching profile and binding for a URL.
+
+        Same as match() but returns both profile and binding.
+
+        Returns:
+            (Profile, AuthBinding) tuple, or None if no match.
+        """
         parsed = urlparse(url)
         hostname = (parsed.hostname or "").lower()
         scheme = parsed.scheme.lower() if parsed.scheme else ""
@@ -172,11 +186,15 @@ class AuthBindings:
 
         # Sort by: 1) match type (scheme-aware > agnostic), 2) binding priority
         matches.sort(key=lambda m: (m[1], m[0].priority), reverse=True)
-        best = matches[0][0]
+        best_binding = matches[0][0]
 
         # Resolve to a profile
         if profiles is None:
             profiles = Profiles()
             profiles.load()
 
-        return profiles.get_profile(best.credential)
+        profile = profiles.get_profile(best_binding.credential)
+        if profile is None:
+            return None
+
+        return (profile, best_binding)

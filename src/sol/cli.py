@@ -307,7 +307,7 @@ async def _run_pipeline(
 
     from rich.status import Status
 
-    from sol.auth import resolve_auth_headers
+    from sol.auth import resolve_auth_headers, AuthBinding
     from sol.auth.binding import AuthBindings
     from sol.formatter import _is_tty, get_console
     from sol.pipeline import run_pipeline
@@ -408,8 +408,9 @@ async def _run_pipeline(
 
     # --- Auth resolution (after scheme normalization) ---
     auth_headers: dict[str, str] | None = None
+    matched_binding: AuthBinding | None = None
     try:
-        auth_headers, profile = await resolve_auth_headers(
+        auth_headers, profile, matched_binding = await resolve_auth_headers(
             execution_url, credential=credential
         )
 
@@ -424,6 +425,14 @@ async def _run_pipeline(
             endpoint=original_url,
             details=exc.details,
         )
+
+    # --- Inject binding meta into args (for adapter use) ---
+    if matched_binding and matched_binding.meta:
+        for key, value in matched_binding.meta.items():
+            # Only inject if not already in args (user args take precedence)
+            if key not in args:
+                args[key] = value
+                logger.debug(f"Injected meta from binding: {key}={value}")
 
     ttl = settings.cache_ttl if settings else 3600
 
